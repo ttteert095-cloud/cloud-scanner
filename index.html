@@ -1,0 +1,549 @@
+
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cloud Scanner AI Pro</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+
+<style>
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: Arial, sans-serif;
+  text-align: center;
+  color: #17476c;
+  background: linear-gradient(#65c4ff, #e5f7ff);
+  min-height: 100vh;
+}
+
+header { padding: 25px; }
+
+h1 { font-size: 30px; }
+
+.container {
+  max-width: 550px;
+  margin: 15px auto;
+  padding: 20px;
+  background: white;
+  border-radius: 22px;
+  box-shadow: 0 8px 25px #286a9430;
+}
+
+.camera {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4/3;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #dcefff;
+}
+
+video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.overlay {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 13px;
+  border-radius: 12px;
+  background: #073c64dd;
+  color: white;
+  text-align: left;
+}
+
+button {
+  border: 0;
+  padding: 13px 18px;
+  margin: 5px;
+  border-radius: 25px;
+  background: #168cdb;
+  color: white;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+button:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.stop { background: #e15e69; }
+
+.result {
+  margin-top: 15px;
+  padding: 18px;
+  background: #eaf7ff;
+  border-radius: 15px;
+}
+
+#cloudName {
+  font-size: 25px;
+  font-weight: bold;
+}
+
+#confidence {
+  font-size: 20px;
+  color: #168cdb;
+}
+
+.bar {
+  height: 10px;
+  background: #c9e5f6;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+#progress {
+  height: 100%;
+  width: 0%;
+  background: #168cdb;
+  transition: width .3s;
+}
+
+#status {
+  color: #397da2;
+  word-break: break-word;
+}
+
+.prediction {
+  text-align: left;
+  margin: 12px 0;
+}
+
+.prediction-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 14px;
+}
+
+.small-bar {
+  height: 8px;
+  background: #dcebf5;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.small-progress {
+  height: 100%;
+  background: #168cdb;
+  width: 0%;
+}
+
+</style>
+</head>
+
+<body>
+
+<header>
+  <h1>☁️ Cloud Scanner AI Pro</h1>
+  <p>ระบบจำแนกชนิดเมฆด้วย AI</p>
+</header>
+
+<div class="container">
+
+  <h2>📷 LIVE CLOUD CAMERA</h2>
+
+  <div class="camera">
+    <video id="camera" autoplay playsinline muted></video>
+
+    <div class="overlay">
+      <strong id="liveName">☁️ Cloud Scanner</strong>
+      <p id="liveConfidence">รอเริ่มต้นระบบ AI</p>
+    </div>
+  </div>
+
+  <p id="status">พร้อมเริ่มต้นระบบ</p>
+
+  <button onclick="loadAI()" id="loadBtn">
+    🧠 โหลด AI
+  </button>
+
+  <button onclick="startCamera()" id="cameraBtn">
+    📷 เปิดกล้อง
+  </button>
+
+  <button onclick="startScan()" id="scanBtn" disabled>
+    ▶ เริ่มสแกน
+  </button>
+
+  <button class="stop" onclick="stopAll()">
+    ⏹ หยุด
+  </button>
+
+  <div class="result">
+    <h3>🔍 ผลการวิเคราะห์</h3>
+
+    <div id="cloudName">รอการสแกน...</div>
+    <p id="cloudThai">ยังไม่มีข้อมูล</p>
+
+    <div id="confidence">0%</div>
+
+    <div class="bar">
+      <div id="progress"></div>
+    </div>
+
+    <p id="description">ส่องกล้องไปยังท้องฟ้า</p>
+  </div>
+
+  <div class="result">
+    <h3>📊 คะแนนแต่ละประเภทเมฆ</h3>
+    <div id="allPredictions">รอผลการสแกน</div>
+  </div>
+
+</div>
+
+<div class="container">
+  <h3>☁️ ประเภทของเมฆ</h3>
+  <p>Cumulus - เมฆก้อนปุย</p>
+  <p>Cirrus - เมฆขนนก</p>
+  <p>Stratus - เมฆแผ่น</p>
+  <p>Cumulonimbus - เมฆฝนฟ้าคะนอง</p>
+  <p>Altocumulus - เมฆก้อนชั้นกลาง</p>
+  <p>Altostratus - เมฆแผ่นชั้นกลาง</p>
+  <p>Cirrostratus - เมฆแผ่นชั้นสูง</p>
+  <p>Cirrocumulus - เมฆก้อนชั้นสูง</p>
+  <p>Stratocumulus - เมฆก้อนชั้นต่ำ</p>
+  <p>Nimbostratus - เมฆฝนต่อเนื่อง</p>
+</div>
+
+<script>
+
+// URL โมเดล Teachable Machine
+const MODEL_URL =
+"https://teachablemachine.withgoogle.com/models/6Cd6J0JKnV/";
+
+const cloudInfo = {
+  cumulus: {
+    thai: "เมฆคิวมูลัส",
+    desc: "เมฆก้อนปุยคล้ายสำลี"
+  },
+  cirrus: {
+    thai: "เมฆซีร์รัส",
+    desc: "เมฆชั้นสูงบางคล้ายขนนก"
+  },
+  stratus: {
+    thai: "เมฆสเตรตัส",
+    desc: "เมฆแผ่นปกคลุมท้องฟ้า"
+  },
+  cumulonimbus: {
+    thai: "เมฆคิวมูโลนิมบัส",
+    desc: "เมฆก้อนขนาดใหญ่ที่อาจทำให้เกิดฝนฟ้าคะนอง"
+  },
+  altocumulus: {
+    thai: "เมฆอัลโตคิวมูลัส",
+    desc: "เมฆก้อนเล็กถึงปานกลางในระดับกลาง"
+  },
+  altostratus: {
+    thai: "เมฆอัลโตสเตรตัส",
+    desc: "เมฆแผ่นสีเทาหรือฟ้าเทาในระดับกลาง"
+  },
+  cirrostratus: {
+    thai: "เมฆซีร์โรสเตรตัส",
+    desc: "เมฆบางคล้ายม่านในระดับสูง"
+  },
+  cirrocumulus: {
+    thai: "เมฆซีร์โรคิวมูลัส",
+    desc: "เมฆก้อนเล็กละเอียดในระดับสูง"
+  },
+  stratocumulus: {
+    thai: "เมฆสเตรโตคิวมูลัส",
+    desc: "เมฆก้อนเรียงตัวเป็นกลุ่มในระดับต่ำ"
+  },
+  nimbostratus: {
+    thai: "เมฆนิมโบสเตรตัส",
+    desc: "เมฆแผ่นหนาที่มักสัมพันธ์กับฝนต่อเนื่อง"
+  },
+  unknown: {
+    thai: "ไม่ใช่เมฆหรือยังจำแนกไม่ได้",
+    desc: "ลองหันกล้องไปยังท้องฟ้าและทดลองใหม่"
+  }
+};
+
+let model = null;
+let stream = null;
+let scanning = false;
+let busy = false;
+let timer = null;
+
+// แปลงชื่อคลาสให้เป็นรูปแบบเดียวกัน
+function normalize(text) {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z]/g, "");
+}
+
+// แสดงข้อความสถานะ
+function setStatus(message) {
+  document.getElementById("status").innerText = message;
+}
+
+// โหลด AI
+async function loadAI() {
+
+  if (model) {
+    setStatus("AI โหลดเรียบร้อยแล้ว ☁️");
+    return;
+  }
+
+  setStatus("กำลังโหลดโมเดล AI...");
+
+  document.getElementById("loadBtn").disabled = true;
+
+  try {
+
+    model = await tmImage.load(
+      MODEL_URL + "model.json",
+      MODEL_URL + "metadata.json"
+    );
+
+    setStatus("โหลด AI สำเร็จ พร้อมใช้งาน ☁️");
+
+    document.getElementById("scanBtn").disabled = false;
+
+  } catch (error) {
+
+    model = null;
+    setStatus("โหลด AI ไม่สำเร็จ: " + error.message);
+
+  } finally {
+
+    document.getElementById("loadBtn").disabled = false;
+
+  }
+}
+
+// เปิดกล้อง
+async function startCamera() {
+
+  try {
+
+    if (!model) {
+      await loadAI();
+    }
+
+    if (!model) return;
+
+    if (stream) {
+      setStatus("กล้องเปิดอยู่แล้ว");
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("เบราว์เซอร์ไม่รองรับกล้อง หรือไม่ได้เปิดผ่าน localhost/HTTPS");
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: "environment"
+      },
+      audio: false
+    });
+
+    const video = document.getElementById("camera");
+
+    video.srcObject = stream;
+    await video.play();
+
+    setStatus("กล้องพร้อมใช้งานแล้ว ☁️");
+
+    document.getElementById("scanBtn").disabled = false;
+
+  } catch (error) {
+
+    setStatus("เปิดกล้องไม่สำเร็จ: " + error.message);
+
+  }
+}
+
+// เริ่มสแกน
+function startScan() {
+
+  if (!model || !stream) {
+    alert("กรุณาโหลด AI และเปิดกล้องก่อน");
+    return;
+  }
+
+  if (scanning) return;
+
+  scanning = true;
+
+  setStatus("กำลังสแกนเมฆแบบเรียลไทม์...");
+
+  scanLoop();
+}
+
+// สร้างแถบคะแนน
+function showPredictions(predictions) {
+
+  const container = document.getElementById("allPredictions");
+
+  container.innerHTML = "";
+
+  predictions.forEach(item => {
+
+    const score = item.probability * 100;
+
+    const row = document.createElement("div");
+    row.className = "prediction";
+
+    const label = document.createElement("div");
+    label.className = "prediction-label";
+
+    const name = document.createElement("span");
+    name.textContent = item.className;
+
+    const percent = document.createElement("span");
+    percent.textContent = score.toFixed(1) + "%";
+
+    label.append(name, percent);
+
+    const bar = document.createElement("div");
+    bar.className = "small-bar";
+
+    const fill = document.createElement("div");
+    fill.className = "small-progress";
+    fill.style.width = score + "%";
+
+    bar.appendChild(fill);
+    row.append(label, bar);
+    container.appendChild(row);
+
+  });
+
+}
+
+// วิเคราะห์ภาพต่อเนื่อง
+async function scanLoop() {
+
+  if (!scanning || busy) return;
+
+  busy = true;
+
+  try {
+
+    const predictions = await model.predict(
+      document.getElementById("camera")
+    );
+
+    predictions.sort((a, b) =>
+      b.probability - a.probability
+    );
+
+    const best = predictions[0];
+
+    const key = normalize(best.className);
+    const score = best.probability * 100;
+
+    const data = cloudInfo[key];
+
+    document.getElementById("confidence").innerText =
+      score.toFixed(1) + "%";
+
+    document.getElementById("progress").style.width =
+      score + "%";
+
+    showPredictions(predictions);
+
+    if (data && score >= 65) {
+
+      document.getElementById("cloudName").innerText =
+        best.className;
+
+      document.getElementById("cloudThai").innerText =
+        data.thai;
+
+      document.getElementById("description").innerText =
+        data.desc;
+
+      document.getElementById("liveName").innerText =
+        "☁️ " + data.thai;
+
+      document.getElementById("liveConfidence").innerText =
+        "คะแนนความมั่นใจ " + score.toFixed(1) + "%";
+
+    } else {
+
+      document.getElementById("cloudName").innerText =
+        "ยังระบุชนิดไม่ได้";
+
+      document.getElementById("cloudThai").innerText =
+        best.className;
+
+      document.getElementById("description").innerText =
+        "ผลยังไม่ชัดเจน ควรทดลองภาพอื่น";
+
+      document.getElementById("liveName").innerText =
+        "☁️ กำลังวิเคราะห์เมฆ";
+
+      document.getElementById("liveConfidence").innerText =
+        "ผลการทำนายยังไม่แน่นอน";
+
+    }
+
+  } catch (error) {
+
+    setStatus("วิเคราะห์ผิดพลาด: " + error.message);
+
+  } finally {
+
+    busy = false;
+
+  }
+
+  if (scanning) {
+    timer = setTimeout(scanLoop, 1000);
+  }
+
+}
+
+// หยุดการสแกนและกล้อง
+function stopAll() {
+
+  scanning = false;
+
+  clearTimeout(timer);
+
+  if (stream) {
+
+    stream.getTracks().forEach(track => track.stop());
+
+    stream = null;
+
+  }
+
+  document.getElementById("camera").srcObject = null;
+
+  document.getElementById("scanBtn").disabled = true;
+
+  document.getElementById("liveName").innerText =
+    "☁️ Cloud Scanner";
+
+  document.getElementById("liveConfidence").innerText =
+    "หยุดการสแกนแล้ว";
+
+  setStatus("หยุดการทำงานแล้ว");
+
+}
+
+window.addEventListener("beforeunload", () => {
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+});
+
+</script>
+</body>
+</html>
